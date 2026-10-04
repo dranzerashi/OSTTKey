@@ -6,6 +6,7 @@ import android.content.pm.PackageManager
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -39,7 +40,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
@@ -69,6 +72,7 @@ fun SettingsScreen(
     microphonePermissionRequestId: Int,
     onKeyboardSettings: () -> Unit,
     onChooseKeyboard: () -> Unit,
+    onOpenCredits: () -> Unit,
 ) {
     val context = LocalContext.current
     val modelSnapshot by modelManager.snapshot.collectAsState()
@@ -215,6 +219,16 @@ fun SettingsScreen(
             }
         }
         Spacer(Modifier.height(8.dp))
+        Text(
+            text = "Credits & licenses",
+            modifier = Modifier
+                .align(Alignment.CenterHorizontally)
+                .clickable(role = Role.Button, onClick = onOpenCredits)
+                .padding(vertical = 6.dp, horizontal = 10.dp),
+            color = Color(0xFF5D6474),
+            fontSize = 12.sp,
+            textDecoration = TextDecoration.Underline,
+        )
     }
 }
 

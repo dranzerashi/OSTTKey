@@ -16,6 +16,7 @@ import com.localdictation.keyboard.ime.DictationInputMethodService
 class MainActivity : ComponentActivity() {
     private var keyboardStatus by mutableStateOf(KeyboardStatus())
     private var microphonePermissionRequestId by mutableIntStateOf(0)
+    private var showCredits by mutableStateOf(false)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -26,17 +27,22 @@ class MainActivity : ComponentActivity() {
         intent.removeExtra(EXTRA_REQUEST_MICROPHONE_PERMISSION)
         setContent {
             LocalDictationTheme {
-                SettingsScreen(
-                    modelManager = (application as LocalDictationApplication).modelManager,
-                    keyboardStatus = keyboardStatus,
-                    microphonePermissionRequestId = microphonePermissionRequestId,
-                    onKeyboardSettings = {
-                        startActivity(Intent(Settings.ACTION_INPUT_METHOD_SETTINGS))
-                    },
-                    onChooseKeyboard = {
-                        (getSystemService(INPUT_METHOD_SERVICE) as InputMethodManager).showInputMethodPicker()
-                    },
-                )
+                if (showCredits) {
+                    CreditsScreen(onBack = { showCredits = false })
+                } else {
+                    SettingsScreen(
+                        modelManager = (application as LocalDictationApplication).modelManager,
+                        keyboardStatus = keyboardStatus,
+                        microphonePermissionRequestId = microphonePermissionRequestId,
+                        onKeyboardSettings = {
+                            startActivity(Intent(Settings.ACTION_INPUT_METHOD_SETTINGS))
+                        },
+                        onChooseKeyboard = {
+                            (getSystemService(INPUT_METHOD_SERVICE) as InputMethodManager).showInputMethodPicker()
+                        },
+                        onOpenCredits = { showCredits = true },
+                    )
+                }
             }
         }
     }

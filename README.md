@@ -21,6 +21,6 @@ Microphone permission is requested only after the user taps the microphone or th
 - Runtime: the published `android-arm64/libneedle.a` and `needle.h` from [Cactus-Compute/needle3](https://huggingface.co/Cactus-Compute/needle3), pinned to runtime revision `f84005f` and checked by SHA-256 at CMake configuration.
 - Model: `whistle.cact` from [Cactus-Compute/whistle](https://huggingface.co/Cactus-Compute/whistle), pinned to model revision `d3ea19e` and verified by SHA-256 after download.
 - C API: `needle_load`, `needle_models`, and `needle_transcribe`. The IME and audio code do not call Cactus directly; native interop is kept in `WhistleNative`, `WhistleSpeechRecognizer`, and `WhistleModelManager`.
-- Licensing: both upstream repositories publish their artifacts under Apache-2.0. See `app/src/main/assets/licenses/Cactus-Apache-2.0.txt`.
+- Licensing: the runtime and model are published under Apache-2.0. Third-party attributions and license texts are also available in the app under **Credits & licenses** and in `app/src/main/assets/licenses/`.
 
 Model download is the only app network operation. Captured audio and transcripts are not uploaded or persisted. The Cactus inference runtime itself performs transcription locally.
