@@ -14,12 +14,6 @@ class InputConnectionController(
         return connection.commitText(text, 1)
     }
 
-    fun deleteBackward(): Boolean {
-        val connection = connectionProvider() ?: return false
-        return connection.deleteSurroundingTextInCodePoints(1, 0) ||
-            connection.deleteSurroundingText(1, 0)
-    }
-
     fun deleteLastWord(): Boolean {
         val connection = connectionProvider() ?: return false
         val textBeforeCursor = connection.getTextBeforeCursor(MAX_WORD_CONTEXT, 0)?.toString()

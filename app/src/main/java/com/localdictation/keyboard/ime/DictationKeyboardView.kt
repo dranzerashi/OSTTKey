@@ -1,6 +1,5 @@
 package com.localdictation.keyboard.ime
 
-import android.os.SystemClock
 import android.view.HapticFeedbackConstants
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloatAsState
@@ -10,8 +9,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
-import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -30,7 +27,6 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -52,11 +48,8 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.localdictation.keyboard.audio.AudioRecorder
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.isActive
 import kotlin.math.abs
 import kotlin.math.floor
-import kotlin.math.roundToLong
 
 @Composable
 fun DictationKeyboardView(
@@ -64,7 +57,6 @@ fun DictationKeyboardView(
     onMicrophoneTap: () -> Unit,
     onEnterTap: () -> Unit,
     onBackspaceTap: () -> Unit,
-    onBackspaceDoubleTap: () -> Unit,
     onWordSelectionStarted: () -> Boolean,
     onWordSelectionChanged: (Int) -> Int,
     onWordSelectionFinished: (Boolean) -> Boolean,
@@ -214,8 +206,7 @@ fun DictationKeyboardView(
                     description = "Backspace key",
                     onClick = onBackspaceTap,
                     onLongClick = {},
-                    onDoubleClick = onBackspaceDoubleTap,
-                    repeatWhilePressed = true,
+                    hapticOnClick = true,
                     onWordSelectionStarted = onWordSelectionStarted,
                     onWordSelectionChanged = onWordSelectionChanged,
                     onWordSelectionFinished = onWordSelectionFinished,
@@ -237,55 +228,20 @@ private fun KeyboardActionKey(
     description: String,
     onClick: () -> Unit,
     onLongClick: (() -> Unit)? = null,
-    onDoubleClick: (() -> Unit)? = null,
-    repeatWhilePressed: Boolean = false,
+    hapticOnClick: Boolean = false,
     onWordSelectionStarted: () -> Boolean = { false },
     onWordSelectionChanged: (Int) -> Int = { it },
     onWordSelectionFinished: (Boolean) -> Boolean = { false },
     supportsWordSelection: Boolean = false,
 ) {
-    val interactionSource = remember { MutableInteractionSource() }
-    val isPressed by interactionSource.collectIsPressedAsState()
-    val currentOnClick by rememberUpdatedState(onClick)
     val currentOnWordSelectionStarted = rememberUpdatedState(onWordSelectionStarted)
     val currentOnWordSelectionChanged = rememberUpdatedState(onWordSelectionChanged)
     val currentOnWordSelectionFinished = rememberUpdatedState(onWordSelectionFinished)
     val currentHapticView = rememberUpdatedState(LocalView.current)
     val longPressRecognized = remember { mutableStateOf(false) }
     val horizontalDragActive = remember { mutableStateOf(false) }
-    val wordSelectionActive = remember { mutableStateOf(false) }
-    val longPressTimeoutMillis = LocalViewConfiguration.current.longPressTimeoutMillis
     val touchSlop = LocalViewConfiguration.current.touchSlop
     val wordSelectionStepPx = with(LocalDensity.current) { WORD_SELECTION_STEP_DP.dp.toPx() }
-
-    LaunchedEffect(
-        isPressed,
-        repeatWhilePressed,
-        longPressTimeoutMillis,
-        horizontalDragActive.value,
-        wordSelectionActive.value,
-    ) {
-        if (!isPressed || !repeatWhilePressed || horizontalDragActive.value || wordSelectionActive.value) {
-            return@LaunchedEffect
-        }
-
-        delay(longPressTimeoutMillis + BACKSPACE_DRAG_START_GRACE_MILLIS)
-        currentOnClick()
-
-        val repeatStartedAt = SystemClock.uptimeMillis()
-        while (isActive) {
-            val heldMillis = SystemClock.uptimeMillis() - repeatStartedAt
-            val progress = (heldMillis.toFloat() / BACKSPACE_ACCELERATION_DURATION_MILLIS)
-                .coerceIn(0f, 1f)
-            val easedProgress = 1f - (1f - progress) * (1f - progress)
-            val repeatDelayMillis = (
-                BACKSPACE_INITIAL_REPEAT_DELAY_MILLIS -
-                    (BACKSPACE_INITIAL_REPEAT_DELAY_MILLIS - BACKSPACE_FAST_REPEAT_DELAY_MILLIS) * easedProgress
-                ).roundToLong()
-            delay(repeatDelayMillis)
-            currentOnClick()
-        }
-    }
 
     val observeWordSelectionDrag = Modifier.pointerInput(supportsWordSelection, wordSelectionStepPx) {
         if (!supportsWordSelection) return@pointerInput
@@ -336,7 +292,6 @@ private fun KeyboardActionKey(
                         repeat(abs(selectedWords - previousSelectedWords)) {
                             currentHapticView.value.performHapticFeedback(HapticFeedbackConstants.TEXT_HANDLE_MOVE)
                         }
-                        wordSelectionActive.value = selectedWords > 0
                     }
                 }
             } finally {
@@ -345,7 +300,6 @@ private fun KeyboardActionKey(
                 }
                 longPressRecognized.value = false
                 horizontalDragActive.value = false
-                wordSelectionActive.value = false
             }
         }
     }
@@ -355,21 +309,20 @@ private fun KeyboardActionKey(
             .size(48.dp)
             .semantics { contentDescription = description }
             .combinedClickable(
-                interactionSource = interactionSource,
-                onClick = onClick,
-                onLongClick = if (repeatWhilePressed || onLongClick != null) {
+                hapticFeedbackEnabled = false,
+                onClick = {
+                    if (hapticOnClick) {
+                        currentHapticView.value.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+                    }
+                    onClick()
+                },
+                onLongClick = if (onLongClick != null) {
                     {
                         longPressRecognized.value = true
-                        onLongClick?.invoke()
+                        onLongClick()
                     }
                 } else {
                     null
-                },
-                onDoubleClick = onDoubleClick?.let { action ->
-                    {
-                        currentHapticView.value.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
-                        action()
-                    }
                 },
             )
             .then(observeWordSelectionDrag),
@@ -388,8 +341,4 @@ private fun formatDuration(milliseconds: Long): String {
 }
 
 private const val WARNING_BEFORE_STOP_MILLIS = 5_000L
-private const val BACKSPACE_ACCELERATION_DURATION_MILLIS = 2_800f
-private const val BACKSPACE_INITIAL_REPEAT_DELAY_MILLIS = 180f
-private const val BACKSPACE_FAST_REPEAT_DELAY_MILLIS = 42f
-private const val BACKSPACE_DRAG_START_GRACE_MILLIS = 180L
 private const val WORD_SELECTION_STEP_DP = 38f
