@@ -143,13 +143,21 @@ jobs:
           cp app/build/outputs/apk/release/app-release.apk "$apk"
           sha256sum "$apk" > "OSTTKey-${GITHUB_REF_NAME}.sha256"
 
-      - name: Create GitHub Release
+      - name: Publish GitHub Release
+        shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "$GITHUB_REF_NAME" \
-            "OSTTKey-${GITHUB_REF_NAME}.apk" \
-            "OSTTKey-${GITHUB_REF_NAME}.sha256" \
-            --verify-tag \
-            --title "OSTTKey ${GITHUB_REF_NAME}" \
-            --generate-notes
+          set -euo pipefail
+          tag="$GITHUB_REF_NAME"
+          apk="OSTTKey-${tag}.apk"
+          checksum="OSTTKey-${tag}.sha256"
+
+          if gh release view "$tag" >/dev/null 2>&1; then
+            gh release upload "$tag" "$apk" "$checksum" --clobber
+          else
+            gh release create "$tag" "$apk" "$checksum" \
+              --verify-tag \
+              --title "OSTTKey ${tag}" \
+              --generate-notes
+          fi

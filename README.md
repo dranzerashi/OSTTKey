@@ -2,6 +2,15 @@
 
 An Android system keyboard for on-device speech-to-text dictation. The app captures 16 kHz mono PCM16 audio with `AudioRecord`, converts samples to the Cactus runtime's float PCM format, transcribes through Whistle, and inserts the result with the active IME `InputConnection`.
 
+## How to use
+
+1. Install OSTTKey from the [GitHub Releases](https://github.com/dranzerashi/OSTTKey/releases) page and open the app.
+2. Download and initialize the Whistle model. The download requires an internet connection; transcription runs on the device afterward.
+3. Tap **Enable as keyboard**, enable OSTTKey in Android's keyboard settings, then select OSTTKey as the active keyboard.
+4. Focus a text field, tap the microphone key, and speak. Recording stops automatically after 30 seconds.
+
+Whistle supports **English, German, French, Spanish, Italian, Dutch, and Polish**.
+
 ## Open and build
 
 Open this folder in Android Studio and sync the Gradle project. The project targets ARM64 (`arm64-v8a`) and needs Android SDK 37, NDK 28.2.13676358, and CMake 3.22.1. The first native build downloads Cactus's published Android ARM64 static runtime and verifies its SHA-256 before linking it into the app's JNI bridge. Keep network access available during that build.
