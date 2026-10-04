@@ -1,12 +1,16 @@
 package com.localdictation.keyboard.ime
 
+import android.os.Handler
+import android.os.Looper
+import android.os.SystemClock
 import android.view.HapticFeedbackConstants
+import android.view.View
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
-import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.Arrangement
@@ -41,7 +45,10 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.LocalViewConfiguration
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.onClick
+import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -205,7 +212,6 @@ fun DictationKeyboardView(
                     glyph = "⌫",
                     description = "Backspace key",
                     onClick = onBackspaceTap,
-                    onLongClick = {},
                     hapticOnClick = true,
                     onWordSelectionStarted = onWordSelectionStarted,
                     onWordSelectionChanged = onWordSelectionChanged,
@@ -227,105 +233,104 @@ private fun KeyboardActionKey(
     glyph: String,
     description: String,
     onClick: () -> Unit,
-    onLongClick: (() -> Unit)? = null,
     hapticOnClick: Boolean = false,
     onWordSelectionStarted: () -> Boolean = { false },
     onWordSelectionChanged: (Int) -> Int = { it },
     onWordSelectionFinished: (Boolean) -> Boolean = { false },
     supportsWordSelection: Boolean = false,
 ) {
+    val currentOnClick = rememberUpdatedState(onClick)
     val currentOnWordSelectionStarted = rememberUpdatedState(onWordSelectionStarted)
     val currentOnWordSelectionChanged = rememberUpdatedState(onWordSelectionChanged)
     val currentOnWordSelectionFinished = rememberUpdatedState(onWordSelectionFinished)
-    val currentHapticView = rememberUpdatedState(LocalView.current)
-    val longPressRecognized = remember { mutableStateOf(false) }
-    val horizontalDragActive = remember { mutableStateOf(false) }
+    val view = LocalView.current
+    val haptics = remember(view) { BackspaceHaptics(view) }
+    val currentHaptics = rememberUpdatedState(haptics)
     val touchSlop = LocalViewConfiguration.current.touchSlop
     val wordSelectionStepPx = with(LocalDensity.current) { WORD_SELECTION_STEP_DP.dp.toPx() }
 
-    val observeWordSelectionDrag = Modifier.pointerInput(supportsWordSelection, wordSelectionStepPx) {
-        if (!supportsWordSelection) return@pointerInput
+    val actionModifier = if (!supportsWordSelection) {
+        Modifier.clickable(onClick = onClick)
+    } else {
+        Modifier.pointerInput(touchSlop, wordSelectionStepPx) {
+            awaitEachGesture {
+                val down = awaitFirstDown(
+                    requireUnconsumed = false,
+                    pass = PointerEventPass.Initial,
+                )
+                var mode = GestureMode.PENDING
+                var selectionStarted = false
+                var selectionAttempted = false
+                var selectedWords = 0
+                var completedNormally = false
 
-        awaitEachGesture {
-            val down = awaitFirstDown(
-                requireUnconsumed = false,
-                pass = PointerEventPass.Initial,
-            )
-            var selectionStarted = false
-            var selectedWords = 0
-            var completedNormally = false
-
-            try {
-                while (true) {
-                    val event = awaitPointerEvent(PointerEventPass.Initial)
-                    val change = event.changes.firstOrNull { it.id == down.id } ?: break
-                    if (!change.pressed) {
-                        if (selectionStarted) {
-                            currentOnWordSelectionFinished.value(selectedWords > 0)
+                try {
+                    while (true) {
+                        val event = awaitPointerEvent(PointerEventPass.Initial)
+                        val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                        if (!change.pressed) {
+                            if (mode == GestureMode.PENDING) {
+                                if (hapticOnClick) currentHaptics.value.wordDeleted()
+                                currentOnClick.value()
+                            } else if (mode == GestureMode.SWIPE && selectionStarted) {
+                                currentOnWordSelectionFinished.value(selectedWords > 0)
+                            }
+                            completedNormally = true
+                            break
                         }
-                        completedNormally = true
-                        break
-                    }
 
-                    if (!longPressRecognized.value) continue
-
-                    val horizontalDistance = change.position.x - down.position.x
-                    val verticalDistance = change.position.y - down.position.y
-                    if (!horizontalDragActive.value &&
-                        abs(horizontalDistance) >= touchSlop &&
-                        abs(horizontalDistance) > abs(verticalDistance)
-                    ) {
-                        horizontalDragActive.value = true
-                        currentHapticView.value.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
-                    }
-                    if (!horizontalDragActive.value) continue
-
-                    val targetWordCount = floor((-horizontalDistance).coerceAtLeast(0f) / wordSelectionStepPx).toInt()
-                    if (targetWordCount == selectedWords) continue
-
-                    if (targetWordCount > 0 && !selectionStarted) {
-                        selectionStarted = currentOnWordSelectionStarted.value()
-                    }
-                    if (selectionStarted) {
-                        val previousSelectedWords = selectedWords
-                        selectedWords = currentOnWordSelectionChanged.value(targetWordCount)
-                        repeat(abs(selectedWords - previousSelectedWords)) {
-                            currentHapticView.value.performHapticFeedback(HapticFeedbackConstants.TEXT_HANDLE_MOVE)
+                        val horizontalDistance = change.position.x - down.position.x
+                        val verticalDistance = change.position.y - down.position.y
+                        if (mode == GestureMode.PENDING &&
+                            maxOf(abs(horizontalDistance), abs(verticalDistance)) >= touchSlop
+                        ) {
+                            if (abs(horizontalDistance) > abs(verticalDistance)) {
+                                mode = GestureMode.SWIPE
+                                currentHaptics.value.swipeActivated()
+                            } else {
+                                mode = GestureMode.CANCELLED
+                            }
                         }
+                        if (mode != GestureMode.SWIPE) continue
+
+                        val targetWordCount = floor((-horizontalDistance).coerceAtLeast(0f) / wordSelectionStepPx).toInt()
+                        if (targetWordCount != selectedWords) {
+                            if (targetWordCount > 0 && !selectionAttempted) {
+                                selectionAttempted = true
+                                selectionStarted = currentOnWordSelectionStarted.value()
+                            }
+                            if (selectionStarted) {
+                                val previousSelectedWords = selectedWords
+                                selectedWords = currentOnWordSelectionChanged.value(targetWordCount)
+                                val changedWords = abs(selectedWords - previousSelectedWords)
+                                if (changedWords > 0) currentHaptics.value.wordsChanged(changedWords)
+                            }
+                        }
+                    }
+                } finally {
+                    if (selectionStarted && !completedNormally) {
+                        currentOnWordSelectionFinished.value(false)
                     }
                 }
-            } finally {
-                if (selectionStarted && !completedNormally) {
-                    currentOnWordSelectionFinished.value(false)
-                }
-                longPressRecognized.value = false
-                horizontalDragActive.value = false
             }
         }
-    }
+        }
 
     Surface(
         modifier = Modifier
             .size(48.dp)
-            .semantics { contentDescription = description }
-            .combinedClickable(
-                hapticFeedbackEnabled = false,
-                onClick = {
-                    if (hapticOnClick) {
-                        currentHapticView.value.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+            .semantics {
+                contentDescription = description
+                role = Role.Button
+                if (supportsWordSelection) {
+                    onClick(label = description) {
+                        if (hapticOnClick) currentHaptics.value.wordDeleted()
+                        currentOnClick.value()
+                        true
                     }
-                    onClick()
-                },
-                onLongClick = if (onLongClick != null) {
-                    {
-                        longPressRecognized.value = true
-                        onLongClick()
-                    }
-                } else {
-                    null
-                },
-            )
-            .then(observeWordSelectionDrag),
+                }
+            }
+            .then(actionModifier),
         shape = RoundedCornerShape(12.dp),
         color = Color(0xFF2B344A),
     ) {
@@ -342,3 +347,35 @@ private fun formatDuration(milliseconds: Long): String {
 
 private const val WARNING_BEFORE_STOP_MILLIS = 5_000L
 private const val WORD_SELECTION_STEP_DP = 38f
+
+private enum class GestureMode {
+    PENDING,
+    SWIPE,
+    CANCELLED,
+}
+
+private class BackspaceHaptics(private val view: View) {
+    private val handler = Handler(Looper.getMainLooper())
+    private var nextPlaybackTime = 0L
+
+    fun wordDeleted() = enqueueFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+
+    fun swipeActivated() = enqueueFeedback(HapticFeedbackConstants.LONG_PRESS)
+
+    fun wordsChanged(count: Int) {
+        repeat(count.coerceAtLeast(0)) {
+            enqueueFeedback(HapticFeedbackConstants.TEXT_HANDLE_MOVE)
+        }
+    }
+
+    private fun enqueueFeedback(feedbackConstant: Int) {
+        val now = SystemClock.uptimeMillis()
+        val startAt = maxOf(now, nextPlaybackTime)
+        nextPlaybackTime = startAt + HAPTIC_INTERVAL_MILLIS
+        handler.postAtTime({ view.performHapticFeedback(feedbackConstant) }, startAt)
+    }
+
+    private companion object {
+        const val HAPTIC_INTERVAL_MILLIS = 55L
+    }
+}
