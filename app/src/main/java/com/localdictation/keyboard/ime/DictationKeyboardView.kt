@@ -1,10 +1,14 @@
 package com.localdictation.keyboard.ime
 
+import android.os.SystemClock
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -23,11 +27,15 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalViewConfiguration
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
@@ -35,6 +43,9 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.localdictation.keyboard.audio.AudioRecorder
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
+import kotlin.math.roundToLong
 
 @Composable
 fun DictationKeyboardView(
@@ -42,6 +53,7 @@ fun DictationKeyboardView(
     onMicrophoneTap: () -> Unit,
     onEnterTap: () -> Unit,
     onBackspaceTap: () -> Unit,
+    onBackspaceDoubleTap: () -> Unit,
     onOpenSettings: () -> Unit,
 ) {
     val isRecording = state is DictationKeyboardState.Recording
@@ -183,7 +195,14 @@ fun DictationKeyboardView(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
-                KeyboardActionKey("⌫", "Backspace key", onBackspaceTap)
+                KeyboardActionKey(
+                    glyph = "⌫",
+                    description = "Backspace key",
+                    onClick = onBackspaceTap,
+                    onLongClick = {},
+                    onDoubleClick = onBackspaceDoubleTap,
+                    repeatWhilePressed = true,
+                )
                 KeyboardActionKey("↵", "Enter key", onEnterTap)
             }
         }
@@ -199,12 +218,46 @@ private fun KeyboardActionKey(
     glyph: String,
     description: String,
     onClick: () -> Unit,
+    onLongClick: (() -> Unit)? = null,
+    onDoubleClick: (() -> Unit)? = null,
+    repeatWhilePressed: Boolean = false,
 ) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val isPressed by interactionSource.collectIsPressedAsState()
+    val currentOnClick by rememberUpdatedState(onClick)
+    val longPressTimeoutMillis = LocalViewConfiguration.current.longPressTimeoutMillis
+
+    LaunchedEffect(isPressed, repeatWhilePressed, longPressTimeoutMillis) {
+        if (!isPressed || !repeatWhilePressed) return@LaunchedEffect
+
+        delay(longPressTimeoutMillis)
+        currentOnClick()
+
+        val repeatStartedAt = SystemClock.uptimeMillis()
+        while (isActive) {
+            val heldMillis = SystemClock.uptimeMillis() - repeatStartedAt
+            val progress = (heldMillis.toFloat() / BACKSPACE_ACCELERATION_DURATION_MILLIS)
+                .coerceIn(0f, 1f)
+            val easedProgress = 1f - (1f - progress) * (1f - progress)
+            val repeatDelayMillis = (
+                BACKSPACE_INITIAL_REPEAT_DELAY_MILLIS -
+                    (BACKSPACE_INITIAL_REPEAT_DELAY_MILLIS - BACKSPACE_FAST_REPEAT_DELAY_MILLIS) * easedProgress
+                ).roundToLong()
+            delay(repeatDelayMillis)
+            currentOnClick()
+        }
+    }
+
     Surface(
-        onClick = onClick,
         modifier = Modifier
             .size(48.dp)
-            .semantics { contentDescription = description },
+            .semantics { contentDescription = description }
+            .combinedClickable(
+                interactionSource = interactionSource,
+                onClick = onClick,
+                onLongClick = onLongClick,
+                onDoubleClick = onDoubleClick,
+            ),
         shape = RoundedCornerShape(12.dp),
         color = Color(0xFF2B344A),
     ) {
@@ -220,3 +273,6 @@ private fun formatDuration(milliseconds: Long): String {
 }
 
 private const val WARNING_BEFORE_STOP_MILLIS = 5_000L
+private const val BACKSPACE_ACCELERATION_DURATION_MILLIS = 2_800f
+private const val BACKSPACE_INITIAL_REPEAT_DELAY_MILLIS = 180f
+private const val BACKSPACE_FAST_REPEAT_DELAY_MILLIS = 42f

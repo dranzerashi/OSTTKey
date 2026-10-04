@@ -76,6 +76,7 @@ class DictationInputMethodService : InputMethodService(), SavedStateRegistryOwne
                     onMicrophoneTap = ::onMicrophoneTap,
                     onEnterTap = ::onEnterTap,
                     onBackspaceTap = { inputController.deleteBackward() },
+                    onBackspaceDoubleTap = { inputController.deleteLastWord() },
                     onOpenSettings = ::openSettings,
                 )
             }
