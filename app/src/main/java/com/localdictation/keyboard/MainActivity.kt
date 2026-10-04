@@ -17,6 +17,7 @@ class MainActivity : ComponentActivity() {
     private var keyboardStatus by mutableStateOf(KeyboardStatus())
     private var microphonePermissionRequestId by mutableIntStateOf(0)
     private var showCredits by mutableStateOf(false)
+    private var showHowToUse by mutableStateOf(false)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -29,6 +30,8 @@ class MainActivity : ComponentActivity() {
             LocalDictationTheme {
                 if (showCredits) {
                     CreditsScreen(onBack = { showCredits = false })
+                } else if (showHowToUse) {
+                    HowToUseScreen(onBack = { showHowToUse = false })
                 } else {
                     SettingsScreen(
                         modelManager = (application as LocalDictationApplication).modelManager,
@@ -40,6 +43,7 @@ class MainActivity : ComponentActivity() {
                         onChooseKeyboard = {
                             (getSystemService(INPUT_METHOD_SERVICE) as InputMethodManager).showInputMethodPicker()
                         },
+                        onOpenHowToUse = { showHowToUse = true },
                         onOpenCredits = { showCredits = true },
                     )
                 }

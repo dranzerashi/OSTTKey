@@ -72,6 +72,7 @@ fun SettingsScreen(
     microphonePermissionRequestId: Int,
     onKeyboardSettings: () -> Unit,
     onChooseKeyboard: () -> Unit,
+    onOpenHowToUse: () -> Unit,
     onOpenCredits: () -> Unit,
 ) {
     val context = LocalContext.current
@@ -219,16 +220,31 @@ fun SettingsScreen(
             }
         }
         Spacer(Modifier.height(8.dp))
-        Text(
-            text = "Credits & licenses",
-            modifier = Modifier
-                .align(Alignment.CenterHorizontally)
-                .clickable(role = Role.Button, onClick = onOpenCredits)
-                .padding(vertical = 6.dp, horizontal = 10.dp),
-            color = Color(0xFF5D6474),
-            fontSize = 12.sp,
-            textDecoration = TextDecoration.Underline,
-        )
+        Row(
+            modifier = Modifier.align(Alignment.CenterHorizontally),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = "How to use",
+                modifier = Modifier
+                    .clickable(role = Role.Button, onClick = onOpenHowToUse)
+                    .padding(vertical = 6.dp, horizontal = 4.dp),
+                color = Color(0xFF5D6474),
+                fontSize = 12.sp,
+                textDecoration = TextDecoration.Underline,
+            )
+            Text("·", color = Color(0xFF8A90A0), fontSize = 12.sp)
+            Text(
+                text = "Credits & licenses",
+                modifier = Modifier
+                    .clickable(role = Role.Button, onClick = onOpenCredits)
+                    .padding(vertical = 6.dp, horizontal = 4.dp),
+                color = Color(0xFF5D6474),
+                fontSize = 12.sp,
+                textDecoration = TextDecoration.Underline,
+            )
+        }
     }
 }
 
