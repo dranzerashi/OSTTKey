@@ -81,14 +81,16 @@ fun DictationKeyboardView(
             Text("ON-DEVICE", color = Color(0xFFB9C7FF), fontSize = 10.sp, letterSpacing = 1.2.sp)
         }
 
-        Row(
+        Box(
             modifier = Modifier
                 .fillMaxWidth()
                 .weight(1f),
-            verticalAlignment = Alignment.CenterVertically,
         ) {
             Column(
-                modifier = Modifier.weight(1f),
+                modifier = Modifier
+                    .align(Alignment.Center)
+                    .fillMaxWidth()
+                    .padding(horizontal = 58.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.Center,
             ) {
@@ -174,14 +176,15 @@ fun DictationKeyboardView(
                 }
             }
 
-            Spacer(Modifier.width(12.dp))
             Column(
-                modifier = Modifier.width(50.dp),
+                modifier = Modifier
+                    .align(Alignment.CenterEnd)
+                    .width(50.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
-                KeyboardActionKey("↵", "Enter key", onEnterTap)
                 KeyboardActionKey("⌫", "Backspace key", onBackspaceTap)
+                KeyboardActionKey("↵", "Enter key", onEnterTap)
             }
         }
 
