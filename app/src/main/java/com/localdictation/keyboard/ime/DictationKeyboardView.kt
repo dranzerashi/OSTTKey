@@ -1,6 +1,7 @@
 package com.localdictation.keyboard.ime
 
 import android.os.SystemClock
+import android.view.HapticFeedbackConstants
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.infiniteRepeatable
@@ -42,6 +43,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.LocalViewConfiguration
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -248,6 +250,7 @@ private fun KeyboardActionKey(
     val currentOnWordSelectionStarted = rememberUpdatedState(onWordSelectionStarted)
     val currentOnWordSelectionChanged = rememberUpdatedState(onWordSelectionChanged)
     val currentOnWordSelectionFinished = rememberUpdatedState(onWordSelectionFinished)
+    val currentHapticView = rememberUpdatedState(LocalView.current)
     val longPressRecognized = remember { mutableStateOf(false) }
     val horizontalDragActive = remember { mutableStateOf(false) }
     val wordSelectionActive = remember { mutableStateOf(false) }
@@ -317,6 +320,7 @@ private fun KeyboardActionKey(
                         abs(horizontalDistance) > abs(verticalDistance)
                     ) {
                         horizontalDragActive.value = true
+                        currentHapticView.value.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
                     }
                     if (!horizontalDragActive.value) continue
 
@@ -327,7 +331,11 @@ private fun KeyboardActionKey(
                         selectionStarted = currentOnWordSelectionStarted.value()
                     }
                     if (selectionStarted) {
+                        val previousSelectedWords = selectedWords
                         selectedWords = currentOnWordSelectionChanged.value(targetWordCount)
+                        repeat(abs(selectedWords - previousSelectedWords)) {
+                            currentHapticView.value.performHapticFeedback(HapticFeedbackConstants.TEXT_HANDLE_MOVE)
+                        }
                         wordSelectionActive.value = selectedWords > 0
                     }
                 }
@@ -357,7 +365,12 @@ private fun KeyboardActionKey(
                 } else {
                     null
                 },
-                onDoubleClick = onDoubleClick,
+                onDoubleClick = onDoubleClick?.let { action ->
+                    {
+                        currentHapticView.value.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+                        action()
+                    }
+                },
             )
             .then(observeWordSelectionDrag),
         shape = RoundedCornerShape(12.dp),
