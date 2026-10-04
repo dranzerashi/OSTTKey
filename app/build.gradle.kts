@@ -19,7 +19,11 @@ fun requiredSigningProperty(name: String): String =
 
 android {
     namespace = "com.localdictation.keyboard"
-    compileSdk = 37
+    compileSdk {
+        version = release(37) {
+            minorApiLevel = 0
+        }
+    }
 
     defaultConfig {
         applicationId = "com.localdictation.keyboard"

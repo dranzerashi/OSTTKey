@@ -43,7 +43,7 @@ jobs:
           set +o pipefail
           yes | "$sdkmanager" --licenses
           set -o pipefail
-          "$sdkmanager" "platforms;android-37" "cmake;3.22.1"
+          "$sdkmanager" "platforms;android-37.0" "cmake;3.22.1"
 
       - name: Decode signing keystore
         shell: bash
