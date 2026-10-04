@@ -77,6 +77,9 @@ class DictationInputMethodService : InputMethodService(), SavedStateRegistryOwne
                     onEnterTap = ::onEnterTap,
                     onBackspaceTap = { inputController.deleteBackward() },
                     onBackspaceDoubleTap = { inputController.deleteLastWord() },
+                    onWordSelectionStarted = { inputController.beginWordSelection() },
+                    onWordSelectionChanged = { inputController.updateWordSelection(it) },
+                    onWordSelectionFinished = { inputController.finishWordSelection(it) },
                     onOpenSettings = ::openSettings,
                 )
             }
@@ -230,6 +233,7 @@ class DictationInputMethodService : InputMethodService(), SavedStateRegistryOwne
 
     private fun stopActiveWork() {
         sessionGeneration++
+        inputController.cancelWordSelection()
         if (keyboardState.value is DictationKeyboardState.Recording) {
             app.audioRecorder.cancel()
         }

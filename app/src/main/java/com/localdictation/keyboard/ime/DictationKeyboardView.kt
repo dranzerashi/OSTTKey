@@ -7,6 +7,8 @@ import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
@@ -29,12 +31,17 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalViewConfiguration
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -45,6 +52,8 @@ import androidx.compose.ui.unit.sp
 import com.localdictation.keyboard.audio.AudioRecorder
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
+import kotlin.math.abs
+import kotlin.math.floor
 import kotlin.math.roundToLong
 
 @Composable
@@ -54,6 +63,9 @@ fun DictationKeyboardView(
     onEnterTap: () -> Unit,
     onBackspaceTap: () -> Unit,
     onBackspaceDoubleTap: () -> Unit,
+    onWordSelectionStarted: () -> Boolean,
+    onWordSelectionChanged: (Int) -> Int,
+    onWordSelectionFinished: (Boolean) -> Boolean,
     onOpenSettings: () -> Unit,
 ) {
     val isRecording = state is DictationKeyboardState.Recording
@@ -202,6 +214,10 @@ fun DictationKeyboardView(
                     onLongClick = {},
                     onDoubleClick = onBackspaceDoubleTap,
                     repeatWhilePressed = true,
+                    onWordSelectionStarted = onWordSelectionStarted,
+                    onWordSelectionChanged = onWordSelectionChanged,
+                    onWordSelectionFinished = onWordSelectionFinished,
+                    supportsWordSelection = true,
                 )
                 KeyboardActionKey("↵", "Enter key", onEnterTap)
             }
@@ -221,16 +237,36 @@ private fun KeyboardActionKey(
     onLongClick: (() -> Unit)? = null,
     onDoubleClick: (() -> Unit)? = null,
     repeatWhilePressed: Boolean = false,
+    onWordSelectionStarted: () -> Boolean = { false },
+    onWordSelectionChanged: (Int) -> Int = { it },
+    onWordSelectionFinished: (Boolean) -> Boolean = { false },
+    supportsWordSelection: Boolean = false,
 ) {
     val interactionSource = remember { MutableInteractionSource() }
     val isPressed by interactionSource.collectIsPressedAsState()
     val currentOnClick by rememberUpdatedState(onClick)
+    val currentOnWordSelectionStarted = rememberUpdatedState(onWordSelectionStarted)
+    val currentOnWordSelectionChanged = rememberUpdatedState(onWordSelectionChanged)
+    val currentOnWordSelectionFinished = rememberUpdatedState(onWordSelectionFinished)
+    val longPressRecognized = remember { mutableStateOf(false) }
+    val horizontalDragActive = remember { mutableStateOf(false) }
+    val wordSelectionActive = remember { mutableStateOf(false) }
     val longPressTimeoutMillis = LocalViewConfiguration.current.longPressTimeoutMillis
+    val touchSlop = LocalViewConfiguration.current.touchSlop
+    val wordSelectionStepPx = with(LocalDensity.current) { WORD_SELECTION_STEP_DP.dp.toPx() }
 
-    LaunchedEffect(isPressed, repeatWhilePressed, longPressTimeoutMillis) {
-        if (!isPressed || !repeatWhilePressed) return@LaunchedEffect
+    LaunchedEffect(
+        isPressed,
+        repeatWhilePressed,
+        longPressTimeoutMillis,
+        horizontalDragActive.value,
+        wordSelectionActive.value,
+    ) {
+        if (!isPressed || !repeatWhilePressed || horizontalDragActive.value || wordSelectionActive.value) {
+            return@LaunchedEffect
+        }
 
-        delay(longPressTimeoutMillis)
+        delay(longPressTimeoutMillis + BACKSPACE_DRAG_START_GRACE_MILLIS)
         currentOnClick()
 
         val repeatStartedAt = SystemClock.uptimeMillis()
@@ -248,6 +284,64 @@ private fun KeyboardActionKey(
         }
     }
 
+    val observeWordSelectionDrag = Modifier.pointerInput(supportsWordSelection, wordSelectionStepPx) {
+        if (!supportsWordSelection) return@pointerInput
+
+        awaitEachGesture {
+            val down = awaitFirstDown(
+                requireUnconsumed = false,
+                pass = PointerEventPass.Initial,
+            )
+            var selectionStarted = false
+            var selectedWords = 0
+            var completedNormally = false
+
+            try {
+                while (true) {
+                    val event = awaitPointerEvent(PointerEventPass.Initial)
+                    val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                    if (!change.pressed) {
+                        if (selectionStarted) {
+                            currentOnWordSelectionFinished.value(selectedWords > 0)
+                        }
+                        completedNormally = true
+                        break
+                    }
+
+                    if (!longPressRecognized.value) continue
+
+                    val horizontalDistance = change.position.x - down.position.x
+                    val verticalDistance = change.position.y - down.position.y
+                    if (!horizontalDragActive.value &&
+                        abs(horizontalDistance) >= touchSlop &&
+                        abs(horizontalDistance) > abs(verticalDistance)
+                    ) {
+                        horizontalDragActive.value = true
+                    }
+                    if (!horizontalDragActive.value) continue
+
+                    val targetWordCount = floor((-horizontalDistance).coerceAtLeast(0f) / wordSelectionStepPx).toInt()
+                    if (targetWordCount == selectedWords) continue
+
+                    if (targetWordCount > 0 && !selectionStarted) {
+                        selectionStarted = currentOnWordSelectionStarted.value()
+                    }
+                    if (selectionStarted) {
+                        selectedWords = currentOnWordSelectionChanged.value(targetWordCount)
+                        wordSelectionActive.value = selectedWords > 0
+                    }
+                }
+            } finally {
+                if (selectionStarted && !completedNormally) {
+                    currentOnWordSelectionFinished.value(false)
+                }
+                longPressRecognized.value = false
+                horizontalDragActive.value = false
+                wordSelectionActive.value = false
+            }
+        }
+    }
+
     Surface(
         modifier = Modifier
             .size(48.dp)
@@ -255,9 +349,17 @@ private fun KeyboardActionKey(
             .combinedClickable(
                 interactionSource = interactionSource,
                 onClick = onClick,
-                onLongClick = onLongClick,
+                onLongClick = if (repeatWhilePressed || onLongClick != null) {
+                    {
+                        longPressRecognized.value = true
+                        onLongClick?.invoke()
+                    }
+                } else {
+                    null
+                },
                 onDoubleClick = onDoubleClick,
-            ),
+            )
+            .then(observeWordSelectionDrag),
         shape = RoundedCornerShape(12.dp),
         color = Color(0xFF2B344A),
     ) {
@@ -276,3 +378,5 @@ private const val WARNING_BEFORE_STOP_MILLIS = 5_000L
 private const val BACKSPACE_ACCELERATION_DURATION_MILLIS = 2_800f
 private const val BACKSPACE_INITIAL_REPEAT_DELAY_MILLIS = 180f
 private const val BACKSPACE_FAST_REPEAT_DELAY_MILLIS = 42f
+private const val BACKSPACE_DRAG_START_GRACE_MILLIS = 180L
+private const val WORD_SELECTION_STEP_DP = 38f
