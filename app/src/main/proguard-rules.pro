@@ -1,0 +1,1 @@
+-keep class com.localdictation.keyboard.stt.WhistleNative { *; }
