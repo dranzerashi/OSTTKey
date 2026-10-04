@@ -3,7 +3,9 @@ package com.localdictation.keyboard.ime
 import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.text.InputType
 import android.view.View
+import android.view.KeyEvent
 import android.view.inputmethod.EditorInfo
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -72,6 +74,8 @@ class DictationInputMethodService : InputMethodService(), SavedStateRegistryOwne
                 DictationKeyboardView(
                     state = state,
                     onMicrophoneTap = ::onMicrophoneTap,
+                    onEnterTap = ::onEnterTap,
+                    onBackspaceTap = { inputController.deleteBackward() },
                     onOpenSettings = ::openSettings,
                 )
             }
@@ -133,6 +137,25 @@ class DictationInputMethodService : InputMethodService(), SavedStateRegistryOwne
             is DictationKeyboardState.Recording -> app.audioRecorder.requestStop()
             DictationKeyboardState.Processing -> Unit
             else -> startDictation()
+        }
+    }
+
+    private fun onEnterTap() {
+        val editorInfo = currentInputEditorInfo
+        val action = editorInfo?.imeOptions?.and(EditorInfo.IME_MASK_ACTION)
+        val isMultiline = editorInfo?.let {
+            (it.inputType and InputType.TYPE_TEXT_FLAG_MULTI_LINE) != 0
+        } == true
+        val shouldPerformEditorAction = editorInfo != null &&
+            !isMultiline &&
+            (editorInfo.imeOptions and EditorInfo.IME_FLAG_NO_ENTER_ACTION) == 0 &&
+            action != EditorInfo.IME_ACTION_NONE &&
+            action != EditorInfo.IME_ACTION_UNSPECIFIED
+
+        if (shouldPerformEditorAction) {
+            currentInputConnection?.performEditorAction(action!!)
+        } else {
+            sendDownUpKeyEvents(KeyEvent.KEYCODE_ENTER)
         }
     }
 
