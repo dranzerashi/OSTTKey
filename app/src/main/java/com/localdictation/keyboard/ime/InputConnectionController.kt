@@ -16,6 +16,10 @@ class InputConnectionController(
 
     fun deleteLastWord(): Boolean {
         val connection = connectionProvider() ?: return false
+        if (hasActiveSelection(connection)) {
+            return connection.commitText("", 1)
+        }
+
         val textBeforeCursor = connection.getTextBeforeCursor(MAX_WORD_CONTEXT, 0)?.toString()
             ?: return false
         if (textBeforeCursor.isEmpty()) return false
@@ -99,6 +103,18 @@ class InputConnectionController(
         val codePointLength = text.codePointCount(start, text.length)
         return connection.deleteSurroundingTextInCodePoints(codePointLength, 0) ||
             connection.deleteSurroundingText(utf16Length, 0)
+    }
+
+    private fun hasActiveSelection(connection: InputConnection): Boolean {
+        val request = ExtractedTextRequest().apply {
+            hintMaxChars = MAX_WORD_CONTEXT
+            hintMaxLines = 1
+        }
+        val extractedText = connection.getExtractedText(request, 0)
+        if (extractedText != null && extractedText.selectionStart >= 0 && extractedText.selectionEnd >= 0) {
+            return extractedText.selectionStart != extractedText.selectionEnd
+        }
+        return !connection.getSelectedText(0).isNullOrEmpty()
     }
 
     private fun findWordStarts(text: String): List<Int> {
