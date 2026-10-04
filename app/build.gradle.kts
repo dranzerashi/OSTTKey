@@ -1,7 +1,21 @@
+import java.util.Properties
+import org.gradle.api.GradleException
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.plugin.compose")
 }
+
+val keystorePropertiesFile = rootProject.file("keystore.properties")
+val keystoreProperties = Properties()
+
+if (keystorePropertiesFile.exists()) {
+    keystorePropertiesFile.inputStream().use { keystoreProperties.load(it) }
+}
+
+fun requiredSigningProperty(name: String): String =
+    keystoreProperties.getProperty(name)?.takeIf { it.isNotBlank() }
+        ?: throw GradleException("Missing '$name' in ${keystorePropertiesFile.name}.")
 
 android {
     namespace = "com.localdictation.keyboard"
@@ -23,6 +37,24 @@ android {
                 cppFlags += listOf("-std=c++17", "-fexceptions", "-frtti")
                 arguments += listOf("-DANDROID_STL=c++_static")
             }
+        }
+    }
+
+    signingConfigs {
+        create("release") {
+            if (keystorePropertiesFile.exists()) {
+                storeFile = rootProject.file(requiredSigningProperty("storeFile"))
+                storePassword = requiredSigningProperty("storePassword")
+                keyAlias = requiredSigningProperty("keyAlias")
+                keyPassword = requiredSigningProperty("keyPassword")
+            }
+        }
+    }
+
+    buildTypes {
+        getByName("release") {
+            signingConfig = signingConfigs.getByName("release")
+            isMinifyEnabled = false
         }
     }
 

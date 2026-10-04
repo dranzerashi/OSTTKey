@@ -5,3 +5,8 @@ local.properties
 **/.cxx/
 *.iml
 /osttkey-release.jks
+/keystore.properties
+/app/release/
+/app/build/outputs/apk/release/
+/app/build/outputs/bundle/release/
+/app/build/outputs/mapping/release/
