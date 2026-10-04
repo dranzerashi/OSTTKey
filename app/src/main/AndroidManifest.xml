@@ -7,7 +7,9 @@
     <application
         android:name=".LocalDictationApplication"
         android:allowBackup="false"
+        android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"
+        android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
         android:theme="@android:style/Theme.Material.Light.NoActionBar"
         android:usesCleartextTraffic="false">
@@ -24,6 +26,7 @@
         <service
             android:name=".ime.DictationInputMethodService"
             android:exported="true"
+            android:icon="@mipmap/ic_launcher"
             android:label="@string/app_name"
             android:permission="android.permission.BIND_INPUT_METHOD">
             <intent-filter>
