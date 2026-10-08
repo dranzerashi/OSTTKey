@@ -22,16 +22,22 @@ import androidx.savedstate.SavedStateRegistryOwner
 import androidx.savedstate.setViewTreeSavedStateRegistryOwner
 import com.localdictation.keyboard.LocalDictationApplication
 import com.localdictation.keyboard.MainActivity
+import com.localdictation.keyboard.DictationModePreferences
+import com.localdictation.keyboard.audio.AudioBuffer
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
+import java.util.concurrent.atomic.AtomicBoolean
 
 class DictationInputMethodService : InputMethodService(), SavedStateRegistryOwner {
     private val lifecycleRegistry by lazy { LifecycleRegistry(this) }
@@ -178,29 +184,15 @@ class DictationInputMethodService : InputMethodService(), SavedStateRegistryOwne
         }
 
         val generation = ++sessionGeneration
-        keyboardState.value = DictationKeyboardState.Recording(0)
+        val pauseAwareMode = DictationModePreferences.isPauseAwareEnabled(this)
+        keyboardState.value = DictationKeyboardState.Recording(
+            elapsedMillis = 0,
+            isPauseAware = pauseAwareMode,
+        )
         dictationJob = serviceScope.launch {
             try {
-                val audio = app.audioRecorder.record { elapsed ->
-                    if (generation == sessionGeneration) {
-                        keyboardState.value = DictationKeyboardState.Recording(elapsed)
-                    }
-                }
-                currentCoroutineContext().ensureActive()
-                if (generation != sessionGeneration) return@launch
-                if (audio.samples.isEmpty()) throw IllegalStateException("No speech was captured.")
-
-                keyboardState.value = DictationKeyboardState.Processing
-                val result = app.speechRecognizer.transcribe(audio)
-                currentCoroutineContext().ensureActive()
-                if (generation != sessionGeneration) return@launch
-                if (result.text.isBlank()) {
-                    keyboardState.value = DictationKeyboardState.Error("No speech detected. Tap to try again.")
-                } else if (inputController.insertAtCursor(result.text)) {
-                    keyboardState.value = DictationKeyboardState.Inserted
-                } else {
-                    keyboardState.value = DictationKeyboardState.Error("The text field is no longer available.")
-                }
+                if (pauseAwareMode) runPauseAwareDictation(generation)
+                else runClassicDictation(generation)
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (error: Exception) {
@@ -213,6 +205,113 @@ class DictationInputMethodService : InputMethodService(), SavedStateRegistryOwne
                 }
             }
         }
+    }
+
+    private suspend fun runClassicDictation(generation: Int) {
+        val audio = app.audioRecorder.record { elapsed ->
+            if (generation == sessionGeneration) {
+                keyboardState.value = DictationKeyboardState.Recording(elapsed)
+            }
+        }
+        currentCoroutineContext().ensureActive()
+        if (generation != sessionGeneration) return
+        if (audio.samples.isEmpty()) throw IllegalStateException("No speech was captured.")
+
+        keyboardState.value = DictationKeyboardState.Processing
+        val result = app.speechRecognizer.transcribe(audio)
+        currentCoroutineContext().ensureActive()
+        if (generation != sessionGeneration) return
+        if (result.text.isBlank()) {
+            keyboardState.value = DictationKeyboardState.Error("No speech detected. Tap to try again.")
+        } else if (inputController.insertAtCursor(result.text)) {
+            keyboardState.value = DictationKeyboardState.Inserted
+        } else {
+            keyboardState.value = DictationKeyboardState.Error("The text field is no longer available.")
+        }
+    }
+
+    private suspend fun runPauseAwareDictation(generation: Int) = coroutineScope {
+        val audioSegments = Channel<AudioBuffer>(capacity = MAX_QUEUED_AUDIO_SEGMENTS)
+        val transcriptionRunning = AtomicBoolean(false)
+        val recorderJob = launch {
+            try {
+                app.audioRecorder.recordPauseAware(
+                    onElapsedMillis = { elapsed ->
+                        if (generation == sessionGeneration) {
+                            keyboardState.value = DictationKeyboardState.Recording(
+                                elapsedMillis = elapsed,
+                                isTranscribing = transcriptionRunning.get(),
+                                isPauseAware = true,
+                            )
+                        }
+                    },
+                    onSegment = { segment -> audioSegments.trySend(segment).isSuccess },
+                )
+                audioSegments.close()
+            } catch (cancelled: CancellationException) {
+                audioSegments.cancel(cancelled)
+                throw cancelled
+            } catch (error: Exception) {
+                audioSegments.close(error)
+            } catch (error: LinkageError) {
+                audioSegments.close(error)
+            }
+        }
+
+        var insertedTranscript = false
+        try {
+            for (segment in audioSegments) {
+                currentCoroutineContext().ensureActive()
+                if (generation != sessionGeneration) return@coroutineScope
+
+                transcriptionRunning.set(true)
+                updatePauseAwareTranscribingState(generation, true)
+                val result = app.speechRecognizer.transcribe(segment)
+                currentCoroutineContext().ensureActive()
+                if (generation != sessionGeneration) return@coroutineScope
+
+                val text = result.text.trim()
+                if (text.isNotEmpty()) {
+                    val insertion = if (insertedTranscript && text.first().isLetterOrDigit()) " $text" else text
+                    if (!inputController.insertAtCursor(insertion)) {
+                        throw IllegalStateException("The text field is no longer available.")
+                    }
+                    insertedTranscript = true
+                }
+                transcriptionRunning.set(false)
+                updatePauseAwareTranscribingState(generation, false)
+            }
+
+            recorderJob.join()
+            currentCoroutineContext().ensureActive()
+            if (generation != sessionGeneration) return@coroutineScope
+            keyboardState.value = if (insertedTranscript) {
+                DictationKeyboardState.Inserted
+            } else {
+                DictationKeyboardState.Error("No speech detected. Tap to try again.")
+            }
+        } catch (cancelled: CancellationException) {
+            app.audioRecorder.cancel()
+            recorderJob.cancelAndJoin()
+            throw cancelled
+        } catch (error: Exception) {
+            app.audioRecorder.cancel()
+            recorderJob.cancelAndJoin()
+            throw error
+        } catch (error: LinkageError) {
+            app.audioRecorder.cancel()
+            recorderJob.cancelAndJoin()
+            throw error
+        } finally {
+            transcriptionRunning.set(false)
+            audioSegments.cancel()
+        }
+    }
+
+    private fun updatePauseAwareTranscribingState(generation: Int, isTranscribing: Boolean) {
+        if (generation != sessionGeneration) return
+        val recording = keyboardState.value as? DictationKeyboardState.Recording ?: return
+        keyboardState.value = recording.copy(isTranscribing = isTranscribing, isPauseAware = true)
     }
 
     private fun requestMicrophonePermission() {
@@ -248,7 +347,13 @@ class DictationInputMethodService : InputMethodService(), SavedStateRegistryOwne
         return when {
             text.contains("model isn't installed", ignoreCase = true) -> "Download Whistle in Dictation Settings first."
             text.contains("microphone", ignoreCase = true) -> "Microphone unavailable. Check microphone access."
+            text.contains("could not keep up", ignoreCase = true) -> "Transcription fell behind. Tap to start a new recording."
+            text.contains("no natural pause", ignoreCase = true) -> "No safe speech pause before Whistle's limit. The last segment was not transcribed; tap to record again."
             else -> "Unable to transcribe. Tap to retry."
         }
+    }
+
+    private companion object {
+        const val MAX_QUEUED_AUDIO_SEGMENTS = 4
     }
 }

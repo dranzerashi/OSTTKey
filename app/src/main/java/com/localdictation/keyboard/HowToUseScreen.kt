@@ -52,8 +52,12 @@ fun HowToUseScreen(onBack: () -> Unit) {
         )
 
         GuideCard(
-            title = "Dictation",
-            body = "Tap the microphone to start recording. Tap it again to stop early. Recording stops automatically after 30 seconds. At 25 seconds, the microphone icon pulses and a countdown appears to warn you. Whistle then transcribes on this device and inserts the result at the cursor.",
+            title = "Dictation modes",
+            points = listOf(
+                "Classic mode is the default. Tap the microphone to start, tap again to stop early, or let recording stop at 30 seconds. The icon warns you during the final 5 seconds.",
+                "Turn on Pause-aware continuous dictation in the main screen settings to transcribe speech in segments. After about 2 seconds of audio, OSTTKey looks for a brief natural pause between words or phrases, then sends that segment to Whistle while continuing to listen. It does not split just because 2 seconds elapsed. Transcripts are inserted as they finish.",
+                "Pause-aware mode stops after 5 seconds without speech. Segments stay below Whistle's 30-second limit. If no natural pause is found before that limit, recording stops rather than cutting through a word. Tap the microphone to stop at any time.",
+            ),
         )
 
         GuideCard(
