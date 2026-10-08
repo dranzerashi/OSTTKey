@@ -18,10 +18,12 @@ class MainActivity : ComponentActivity() {
     private var microphonePermissionRequestId by mutableIntStateOf(0)
     private var showCredits by mutableStateOf(false)
     private var showHowToUse by mutableStateOf(false)
+    private var pauseAwareDictationEnabled by mutableStateOf(false)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         keyboardStatus = readKeyboardStatus()
+        pauseAwareDictationEnabled = DictationModePreferences.isPauseAwareEnabled(this)
         if (intent.getBooleanExtra(EXTRA_REQUEST_MICROPHONE_PERMISSION, false)) {
             microphonePermissionRequestId++
         }
@@ -37,11 +39,16 @@ class MainActivity : ComponentActivity() {
                         modelManager = (application as LocalDictationApplication).modelManager,
                         keyboardStatus = keyboardStatus,
                         microphonePermissionRequestId = microphonePermissionRequestId,
+                        pauseAwareDictationEnabled = pauseAwareDictationEnabled,
                         onKeyboardSettings = {
                             startActivity(Intent(Settings.ACTION_INPUT_METHOD_SETTINGS))
                         },
                         onChooseKeyboard = {
                             (getSystemService(INPUT_METHOD_SERVICE) as InputMethodManager).showInputMethodPicker()
+                        },
+                        onPauseAwareDictationChanged = { enabled ->
+                            pauseAwareDictationEnabled = enabled
+                            DictationModePreferences.setPauseAwareEnabled(this, enabled)
                         },
                         onOpenHowToUse = { showHowToUse = true },
                         onOpenCredits = { showCredits = true },
@@ -63,6 +70,7 @@ class MainActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
         refreshKeyboardStatus()
+        pauseAwareDictationEnabled = DictationModePreferences.isPauseAwareEnabled(this)
     }
 
     private fun refreshKeyboardStatus() {

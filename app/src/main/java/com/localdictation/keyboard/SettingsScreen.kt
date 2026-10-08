@@ -26,6 +26,7 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
@@ -70,8 +71,10 @@ fun SettingsScreen(
     modelManager: WhistleModelManager,
     keyboardStatus: KeyboardStatus,
     microphonePermissionRequestId: Int,
+    pauseAwareDictationEnabled: Boolean,
     onKeyboardSettings: () -> Unit,
     onChooseKeyboard: () -> Unit,
+    onPauseAwareDictationChanged: (Boolean) -> Unit,
     onOpenHowToUse: () -> Unit,
     onOpenCredits: () -> Unit,
 ) {
@@ -187,6 +190,33 @@ fun SettingsScreen(
                         Text("Grant microphone access")
                     }
                 }
+            }
+        }
+
+        Card(colors = CardDefaults.cardColors(containerColor = Color.White)) {
+            Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
+                Text("Dictation mode", fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        "Pause-aware continuous dictation",
+                        modifier = Modifier.weight(1f),
+                        color = Color(0xFF1B2030),
+                        fontSize = 14.sp,
+                    )
+                    Switch(
+                        checked = pauseAwareDictationEnabled,
+                        onCheckedChange = onPauseAwareDictationChanged,
+                    )
+                }
+                Text(
+                    if (pauseAwareDictationEnabled) {
+                        "After about 2 seconds of audio, transcribes at a short natural pause while continuing to listen. Stops after 5 seconds of silence."
+                    } else {
+                        "Classic mode records for up to 30 seconds and warns you during the final 5 seconds. Tap the microphone to stop sooner."
+                    },
+                    color = Color(0xFF545C6E),
+                    fontSize = 13.sp,
+                )
             }
         }
 

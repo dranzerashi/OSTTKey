@@ -7,7 +7,7 @@ An Android system keyboard for on-device speech-to-text dictation. The app captu
 1. Install OSTTKey from the [GitHub Releases](https://github.com/dranzerashi/OSTTKey/releases) page and open the app.
 2. Download and initialize the Whistle model. The download requires an internet connection; transcription runs on the device afterward.
 3. Tap **Enable as keyboard**, enable OSTTKey in Android's keyboard settings, then select OSTTKey as the active keyboard.
-4. Focus a text field, tap the microphone key, and speak. Recording stops automatically after 30 seconds.
+4. Focus a text field, tap the microphone key, and speak. Classic mode stops at 30 seconds. Enable pause-aware continuous dictation in app settings to transcribe segments after pauses while continuing to listen.
 
 Whistle supports **English, German, French, Spanish, Italian, Dutch, and Polish**.
 
@@ -23,7 +23,7 @@ From a shell with a working Android SDK installation:
 
 Install the debug APK, open OSTTKey, download and initialize Whistle, then enable it from **Enable as keyboard**. Android requires the user to select the IME; the app never changes the default keyboard silently. The settings screen includes a text field for trying the IME.
 
-Microphone permission is requested only after the user taps the microphone or the permission control in settings. Dictation records for at most 30 seconds and stops if its input session is hidden or finished.
+Microphone permission is requested only after the user taps the microphone or the permission control in settings. Classic dictation stops after 30 seconds. Pause-aware mode begins checking for a short natural pause after about 2 seconds of audio, transcribes at that pause while continuing to listen, and stops after 5 seconds without speech. Segments stay below the model's 30-second limit; if no safe pause is found before the limit, recording stops rather than splitting active speech. Either mode stops if its input session is hidden or finished.
 
 ## Cactus and Whistle
 

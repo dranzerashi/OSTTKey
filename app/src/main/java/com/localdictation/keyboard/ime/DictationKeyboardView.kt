@@ -71,10 +71,11 @@ fun DictationKeyboardView(
 ) {
     val isRecording = state is DictationKeyboardState.Recording
     val isProcessing = state is DictationKeyboardState.Processing
-    val elapsedMillis = (state as? DictationKeyboardState.Recording)?.elapsedMillis ?: 0L
-    val warningStartsAtMillis = AudioRecorder.MAX_DURATION_MILLIS - WARNING_BEFORE_STOP_MILLIS
-    val isAboutToStop = isRecording && elapsedMillis >= warningStartsAtMillis
-    val secondsUntilStop = ((AudioRecorder.MAX_DURATION_MILLIS - elapsedMillis + 999L) / 1_000L)
+    val recordingState = state as? DictationKeyboardState.Recording
+    val elapsedMillis = recordingState?.elapsedMillis ?: 0L
+    val isAboutToStop = isRecording && recordingState?.isPauseAware == false &&
+        elapsedMillis >= AudioRecorder.MAX_DURATION_MILLIS.toLong() - WARNING_BEFORE_STOP_MILLIS
+    val secondsUntilStop = ((AudioRecorder.MAX_DURATION_MILLIS.toLong() - elapsedMillis + 999L) / 1_000L)
         .coerceAtLeast(0L)
     val background = Color(0xFF171C27)
     val accent = if (isRecording) Color(0xFFE75561) else Color(0xFF829BFF)
@@ -161,10 +162,12 @@ fun DictationKeyboardView(
                 Text(
                     text = when (state) {
                         DictationKeyboardState.Idle -> "Tap to dictate"
-                        is DictationKeyboardState.Recording -> if (isAboutToStop) {
-                            "Stopping in ${secondsUntilStop}s · ${formatDuration(state.elapsedMillis)}"
-                        } else {
-                            "Listening · ${formatDuration(state.elapsedMillis)}"
+                        is DictationKeyboardState.Recording -> when {
+                            state.isPauseAware && state.isTranscribing ->
+                                "Transcribing · Listening · ${formatDuration(state.elapsedMillis, true)}"
+                            state.isPauseAware -> "Listening · ${formatDuration(state.elapsedMillis, true)}"
+                            isAboutToStop -> "Stopping in ${secondsUntilStop}s · ${formatDuration(state.elapsedMillis, false)}"
+                            else -> "Listening · ${formatDuration(state.elapsedMillis, false)}"
                         }
                         DictationKeyboardState.Processing -> "Transcribing on this device…"
                         DictationKeyboardState.ModelRequired -> "Whistle model needs to be downloaded"
@@ -340,8 +343,9 @@ private fun KeyboardActionKey(
     }
 }
 
-private fun formatDuration(milliseconds: Long): String {
-    val seconds = (milliseconds / 1_000).coerceAtMost(AudioRecorder.MAX_DURATION_MILLIS.toLong() / 1_000)
+private fun formatDuration(milliseconds: Long, pauseAware: Boolean): String {
+    val rawSeconds = (milliseconds / 1_000).coerceAtLeast(0L)
+    val seconds = if (pauseAware) rawSeconds else rawSeconds.coerceAtMost(AudioRecorder.MAX_DURATION_MILLIS.toLong() / 1_000L)
     return "%02d:%02d".format(seconds / 60, seconds % 60)
 }
 
